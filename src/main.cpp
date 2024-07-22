@@ -211,6 +211,8 @@ void setup()
 {
     Serial.begin(115200);
     delay(200);
+    Serial.println("Control de ventilador");
+    Serial.println("ISET 57 año 2024");
 
     IrReceiver.begin(SENSOR_IR, BUZZER);
 
