@@ -23,10 +23,11 @@ a trabajar ! ...
 # Circuito
 
 Está hecho con EasyEDA. Este es el link:
+
 https://easyeda.com/editor#id=5612fed8abc0466180bf618d34320de8
 
 
-![Circuito](documentacion/Schematic_Remoto-para-Ventilador-2024.2_2024-07-22.png)
+![Circuito](documentacion/Schematic_Remoto-para-Ventilador-2024.2_2024-07-30.png)
 
 
 # Display
