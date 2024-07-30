@@ -14,7 +14,9 @@
     Alumnos de tercer año.
     Año 2024.
 */
+
 #include "IRremote/IRremote.hpp"
+#include "RemotosUsados.h"  // aca estan los codigos usados
 
 const int SENSOR_IR     = A5;                    // sensor IR
 const int PIN_BAJA      = 12;                    // boton de bajada
@@ -27,99 +29,34 @@ int velocidades[5]      = {0, 150, 90, 40, 15};  // OFF, 1, 2, 3, 4
 int mux                 = 1;
 volatile int ReleNumero = 0;  // comienza apagado
 
-// forward.
-void BotonParar();
-void EncenderEsteLed(int f, int c);
-void BotonBaja();
-void AccionarReles();
-void BotonSube();
-void LeerInfrarrojo();
-
-void LeerInfrarrojo()
+// ENCIENDE O APAGA EL BUZZER Y EL LED DEL BOTON.
+// estado!=0 enciende el buzzer.
+// estado=0 ambos leds OFF, =1 led SUBE, =2 led BAJA, =3 ambos leds ON.
+void BuzzerYLed(int estado)
 {
-    int command = IrReceiver.decodedIRData.command;
-    IrReceiver.resume();
-    Serial.print("Comando IR: ");
-    Serial.println(command);
-    delay(100);
-    if (IrReceiver.decodedIRData.address == 0)
+    digitalWrite(BUZZER, estado != 0);
+    if (estado == 0)
     {
-        // detecto diferentes botones de varios remotos...
-        if (command == 21 || command == 176)
-        {
-            BotonSube();
-        }
-        if (command == 7 || command == 178)
-        {
-            BotonBaja();
-        }
-        if (command == 9 || command == 133)
-        {
-            BotonParar();
-        }
+        pinMode(PIN_SUBE, INPUT_PULLUP);  // apaga led del boton ^
+        pinMode(PIN_BAJA, INPUT_PULLUP);  // apaga led del boton v
     }
-}
-
-void SoundTopUp()
-{
-    tone(BUZZER, 523, 77);
-    delay(150);
-    tone(BUZZER, 784, 77);
-    delay(150);
-    tone(BUZZER, 698, 99);
-}
-
-void SoundTopDown()
-{
-    tone(BUZZER, 784, 77);
-    delay(150);
-    tone(BUZZER, 659, 77);
-    delay(150);
-    tone(BUZZER, 523, 99);
-}
-
-void SoundUp()
-{
-    // for (size_t i = 600; i < 6000; i += 4) tone(BUZZER, i, 10);
-    tone(BUZZER, 2640, 100);
-    delay(100);
-}
-
-void SoundDown()
-{
-    // for (size_t i = 600; i < 6000; i += 4) tone(BUZZER, 6000 - i, 10);
-    tone(BUZZER, 2200, 100);
-    delay(100);
-}
-
-void SoundApagar()
-{
-    for (size_t i = 200; i < 6000; i += 4) tone(BUZZER, 6000 - i, 10);
-}
-
-void BotonSube()
-{
-    ReleNumero++;
-    if (ReleNumero > 4)
+    if ((estado & 1) != 0)
     {
-        ReleNumero = 4;
-        SoundTopUp();
+        digitalWrite(PIN_SUBE, LOW);  // prende led del boton ^
+        pinMode(PIN_SUBE, OUTPUT);    //  "
     }
-
-    // encender led
-    digitalWrite(PIN_SUBE, LOW);  // prende led del boton
-    pinMode(PIN_SUBE, OUTPUT);    // "
-
-    Serial.print("RELE ");
-    Serial.println(ReleNumero);
-    AccionarReles();
-
-    SoundUp();
-    pinMode(PIN_SUBE, INPUT_PULLUP);  // apaga led del boton
+    if ((estado & 2) != 0)
+    {
+        digitalWrite(PIN_BAJA, LOW);  // prende led del boton v
+        pinMode(PIN_BAJA, OUTPUT);    //  "
+    }
 }
 
 void AccionarReles()
 {
+    Serial.print("RELE ");
+    Serial.println(ReleNumero);
+
     if (ReleNumero == 1)
     {
         digitalWrite(RELES[0], 1);
@@ -157,31 +94,105 @@ void AccionarReles()
     }
 }
 
-void BotonBaja()
+void BotonSube()
 {
-    ReleNumero--;
-    if (ReleNumero < 1)
+    if (ReleNumero >= 4)
     {
-        ReleNumero = 1;
-        SoundTopDown();
+        BuzzerYLed(1);  // llego al tope.
+        delay(250);
+        BuzzerYLed(0);
+        return;
     }
 
-    digitalWrite(PIN_BAJA, LOW);  // prende led del boton
-    pinMode(PIN_BAJA, OUTPUT);    //  "
-
-    Serial.print("RELE ");
-    Serial.println(ReleNumero);
+    ReleNumero++;  // proxima velocidad.
     AccionarReles();
 
-    SoundDown();
-    pinMode(PIN_BAJA, INPUT_PULLUP);  // apaga led del boton
+    BuzzerYLed(1);  // indicadores
+    delay(50);
+    BuzzerYLed(0);
+}
+
+void BotonBaja()
+{
+    if (ReleNumero <= 1)
+    {
+        BuzzerYLed(2);  // llego al tope.
+        delay(250);
+        BuzzerYLed(0);
+        return;
+    }
+
+    ReleNumero--;  // proxima velocidad.
+    AccionarReles();
+
+    BuzzerYLed(2);  // indicadores
+    delay(50);
+    BuzzerYLed(0);
 }
 
 void BotonParar()
 {
-    ReleNumero = 0;
+    ReleNumero = 0;  // STOP
     AccionarReles();
-    SoundApagar();
+
+    // sonido que indica STOP:
+    for (int i = 0; i < 3; i++)
+    {
+        BuzzerYLed(3);
+        delay(50);
+        BuzzerYLed(0);
+        delay(100);
+    }
+}
+
+void LeerInfrarrojo()
+{
+    //----------------------------------------------------------------------------
+    // Muestra el valor del sensor IR si falla algo.
+    //
+    if (IrReceiver.decodedIRData.protocol == UNKNOWN)
+    {
+        // (tambien puede ser que el codigo sea muy nuevo y no esté en esta libreria)
+        Serial.println(F("Ruido o codigo desconocido"));
+        IrReceiver.printIRResultRawFormatted(&Serial, true);
+    }
+    IrReceiver.resume();
+
+    uint16_t command = IrReceiver.decodedIRData.command;
+    Serial.print("Codigo recibido: ");
+    Serial.println(command);
+
+    //----------------------------------------------------------------------------
+    // Ahora analizo si el codigo me sirve:
+    //
+
+    // no quiero codigos repetidos dentro de este tiempo...
+    // si transcurrieron menos de 500 ms y el comando es el mismo, no hago nada.
+    static uint32_t UT = 0;   // ultimo tiempo
+    static uint16_t UC = -1;  // ultimo comando
+    if (millis() - UT < 500 && command == UC) return;
+    UT = millis();
+    UC = command;
+
+    //----------------------------------------------------------------------------
+    // detecto diferentes botones de varios remotos...
+    //
+    if (command == PROYECTOR_EPSON_UP || command == PROYECTOR_EPSON_LEFT || command == IR_ARDUINO_21)
+    {
+        BotonSube();
+    }
+    else if (command == PROYECTOR_EPSON_DOWN || command == PROYECTOR_EPSON_RIGHT || command == IR_ARDUINO_7)
+    {
+        BotonBaja();
+    }
+    else if (command == PROYECTOR_EPSON_ENTER || command == IR_ARDUINO_9)
+    {
+        BotonParar();
+    }
+    else
+    {
+        Serial.println(F("Comando desconocido"));
+    }
 }
 
 // solo un PUNTO se verá encendido, pero como es mucha la velocidad del multiplexado,
@@ -192,7 +203,6 @@ void EncenderEsteLed(int f, int c)
     {
         // llegó un codigo del remoto. Lo leo y actúo si es necesario.
         LeerInfrarrojo();
-        delay(400);
     }
 
     if (f < 0)
@@ -413,10 +423,23 @@ void setup()
 {
     Serial.begin(115200);
     delay(200);
-    Serial.println("Control de ventilador");
-    Serial.println("ISET 57 año 2024");
+    Serial.println("\n\n*******************************************************");
+    Serial.println("  Control de ventilador");
+    Serial.println("  ISET 57 año 2024");
+    Serial.println("  https://github.com/MicroIset57/ventiladorControlado");
+    Serial.println("*******************************************************\n");
+
+    /*
+        Solo puedo usar el "tone" antes de configurar el IR,
+        porque ambos usan la interrupcion de TIMER.
+    */
+    for (size_t i = 600; i < 6000; i += 4) tone(BUZZER, i, 10);
 
     IrReceiver.begin(SENSOR_IR, DISABLE_LED_FEEDBACK);
+
+    // Serial.print(F("Ready to receive IR signals of protocols: "));
+    // printActiveIRProtocols(&Serial);
+    // Serial.println("at pin " + String(SENSOR_IR));
 
     // desplazamiento array de leds
     for (int a = 0; a < 5; a++)
